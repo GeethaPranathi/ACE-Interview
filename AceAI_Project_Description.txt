@@ -1,0 +1,221 @@
+================================================================================
+                     AceAI - AI-Powered Mock Interview Platform
+                          Project Description Document
+================================================================================
+
+
+1. PROJECT OVERVIEW
+--------------------------------------------------------------------------------
+
+AceAI is a Generative AI-powered mock interview platform built for a hackathon.
+Its goal is to help job seekers simulate real-world interviews, practise answering
+questions out loud, and receive personalised AI-driven feedback — all without
+needing a human interviewer.
+
+The platform covers the full interview lifecycle: from resume analysis and question
+generation, through to real-time speech recording and detailed post-session coaching.
+
+Core Value Proposition:
+  Upload your resume & job description
+  --> Get 10 AI-tailored interview questions
+  --> Answer via microphone or text
+  --> Receive detailed AI coaching feedback instantly
+
+
+2. SYSTEM ARCHITECTURE
+--------------------------------------------------------------------------------
+
+The application follows a client-server architecture with two independently
+running services that communicate over HTTP REST.
+
+  Layer           | Technology                                    | Port
+  ----------------|-----------------------------------------------|------
+  Frontend        | Next.js 15 (App Router, Turbopack), React 19  | 3000
+                  | TailwindCSS 3                                 |
+  Backend API     | Flask 3.1, Python 3, Flask-CORS, PyPDF2       | 5000
+  AI / LLM        | Google Gemini (gemini-2.5-flash)              | Cloud
+
+The frontend (UI-main/) runs on port 3000 and handles all user interaction.
+The backend (llm-api-main/) runs on port 5000 and handles PDF parsing and AI calls.
+
+
+3. FULL APPLICATION FLOW
+--------------------------------------------------------------------------------
+
+Step 1 - Landing Page
+  The user lands on the AceAI homepage, which displays a hero section with the
+  headline "Master Your Dream Job Interviews With AI" and a call-to-action button.
+  No login or registration is required.
+
+Step 2 - Resume Upload Modal
+  Clicking "Start your interview prep here" opens a modal form where the user
+  provides:
+    (a) Their Resume as a PDF (drag-and-drop or file browse)
+    (b) The Job Description as free text
+    (c) An optional Knowledge Domain (e.g. "AI, ML, Web Dev")
+
+Step 3 - AI Question Generation
+  On clicking "Launch", the frontend sends a POST /upload request with the resume
+  PDF and job description. The backend:
+    - Extracts text from the PDF using PyPDF2
+    - Constructs a prompt and sends it to Gemini AI
+    - Receives 10 tailored interview questions matching the candidate's background
+      and the role requirements
+    - Returns the questions as a JSON array to the frontend
+
+Step 4 - Live Interview Screen
+  The modal closes and the interview screen activates. The user's webcam and
+  microphone turn on automatically via browser APIs. Questions appear one at a
+  time. The user clicks "Start Answer", speaks their response (captured by the
+  browser's Web Speech API / SpeechRecognition), then clicks "Stop Recording".
+  If speech recognition is unavailable, the user can type their answer manually
+  in the provided text area.
+
+Step 5 - Per-Answer AI Analysis
+  After each answer, a POST /analyze request is sent with the question and the
+  transcribed (or typed) answer. The backend computes locally:
+    - Filler word percentage (um, uh, like, basically, actually, so, right...)
+    - Repeated words count (words used more than 2 times)
+
+  Then Gemini AI analyses the answer and returns:
+    - Feedback: 2-3 sentences of constructive coaching advice
+    - Relevance: High / Medium / Low (how well the answer matched the question)
+    - Sentiment: Positive / Neutral / Negative
+
+Step 6 - Full Feedback Report
+  Once every question is answered, the interview ends and the webcam stops. A
+  complete report card is displayed showing for every question:
+    - The question asked
+    - The user's transcribed answer
+    - AI coaching feedback
+    - Filler word percentage
+    - Relevance rating
+    - Repeated words count
+    - Sentiment
+  The user can then return to the home screen and start a new session.
+
+
+4. AI & LLM INTEGRATION DETAILS
+--------------------------------------------------------------------------------
+
+Both AI tasks use Google's gemini-2.5-flash model via the official Python SDK
+(google-generativeai). The API key is loaded from an environment variable
+(GEMINI_API_KEY).
+
+  Task                         | Input to Gemini              | Output
+  -----------------------------|------------------------------|----------------------
+  Interview Question           | Extracted resume text        | JSON:
+  Generation                   | + job description            | {"questions": [...]}
+                               |                              |
+  Answer Analysis              | Interview question           | JSON:
+                               | + candidate's spoken answer  | {"feedback": "...",
+                               |                              |  "relevance": "High",
+                               |                              |  "sentiment": "Positive"}
+
+The backend also strips markdown code fences from Gemini's JSON responses to
+ensure clean parsing every time.
+
+
+5. BACKEND API REFERENCE
+--------------------------------------------------------------------------------
+
+  Method | Endpoint  | Description                                   | Key Fields
+  -------|-----------|-----------------------------------------------|-------------------
+  GET    | /         | Health check, returns service status          | -
+  POST   | /upload   | Upload resume PDF + job description;          | file (PDF),
+         |           | returns 10 AI-generated questions             | job_description,
+         |           |                                               | knowledge_domain
+  POST   | /analyze  | Analyse a candidate answer; returns AI        | question,
+         |           | feedback + filler stats                       | response
+
+
+6. FULL TECH STACK
+--------------------------------------------------------------------------------
+
+  Frontend Framework  : Next.js 15 with App Router and Turbopack
+  UI Library          : React 19
+  Styling             : TailwindCSS 3
+  State Management    : Redux 5 + React-Redux 9
+  PDF Handling        : pdf-lib, pdfjs-dist (frontend); PyPDF2 (backend)
+  Backend Framework   : Flask 3.1
+  AI Provider         : Google Gemini (gemini-2.5-flash) via google-generativeai
+  Speech Input        : Browser Web Speech API (SpeechRecognition)
+  Camera / Video      : Browser MediaDevices API (getUserMedia)
+  Cross-Origin        : Flask-CORS
+  Environment Config  : .env.local (frontend), .env (backend)
+
+
+7. KEY FILE REFERENCE
+--------------------------------------------------------------------------------
+
+  UI-main/src/app/page.js
+    Root page - controls whether to show the landing page or the interview screen.
+    Manages top-level state: questions list, interview started flag, modal open flag.
+
+  components/UserInputs.js
+    Resume upload modal form. Handles file selection, job description input, and
+    knowledge domain. Sends multipart/form-data POST to /upload and parses the
+    AI-generated questions from the response.
+
+  components/askQuestions.js
+    Main interview screen. Activates webcam/mic via getUserMedia. Uses the browser
+    SpeechRecognition API to transcribe spoken answers. Submits each answer to
+    /analyze and collects feedback. Renders the final feedback report card.
+
+  llm-api/app/routes.py
+    Defines the Flask route handlers for / (health), /upload, and /analyze.
+    Calls service functions and handles errors with appropriate HTTP status codes.
+
+  llm-api/app/services.py
+    Contains all Gemini AI logic:
+      - generate_interview_questions(): builds prompt, calls Gemini, returns questions
+      - analyze_response(): computes filler stats locally, calls Gemini for feedback
+
+  llm-api/app/config.py
+    Loads GEMINI_API_KEY from the .env file using python-dotenv.
+
+  llm-api/app/__init__.py
+    Flask application factory. Registers CORS, the API blueprint, and a global
+    exception handler that logs tracebacks to backend_error.log.
+
+
+8. POTENTIAL FEATURES TO ADD
+--------------------------------------------------------------------------------
+
+High Impact
+  - Overall score (0-100) combining relevance, sentiment and filler percentage
+  - Timer per question (e.g. 2-minute countdown) to simulate real interview pressure
+  - Resume strength analyser - score the resume before the interview begins
+  - Text-to-Speech - browser SpeechSynthesis reads questions aloud to the user
+  - Category-based questions - tag each as Behavioural / Technical / Situational
+
+Analytics & Progress
+  - Progress bar across questions (e.g. "Q 3 of 10")
+  - Radar chart visualising skills: confidence, clarity, relevance
+  - Session history persisted in localStorage or a lightweight database
+
+Richer AI Capabilities
+  - Follow-up questions - AI probes deeper when an answer is weak
+  - Ideal answer comparison - show a model answer alongside AI feedback
+  - Voice tone and confidence analysis from audio pitch and pacing data
+
+UX Improvements
+  - Dark mode support
+  - Smooth animated transitions between questions
+  - Fully mobile-responsive layout
+  - Loading skeleton while Gemini generates questions
+
+
+9. ENVIRONMENT VARIABLES
+--------------------------------------------------------------------------------
+
+Frontend (UI-main/.env.local):
+  NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:5000
+
+Backend (llm-api-main/llm-api-main/.env):
+  GEMINI_API_KEY=your_google_gemini_api_key
+
+
+================================================================================
+  AceAI | Built for a Generative AI Hackathon | Powered by Google Gemini
+================================================================================
